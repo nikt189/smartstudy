@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartStudy</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #1b1f24);
+    --hint: var(--tg-theme-hint-color, #6b7280);
+    --card: var(--tg-theme-secondary-bg-color, #f1f4f8);
+    --accent: var(--tg-theme-button-color, #2a7de1);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  header { display: flex; justify-content: space-between; align-items: baseline; color: var(--hint); font-size: 14px; }
+  .bar { height: 4px; background: var(--card); border-radius: 2px; margin: 8px 0 16px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  main { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .card {
+    flex: 1; background: var(--card); border-radius: 20px; padding: 24px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; gap: 12px; cursor: pointer; user-select: none; min-height: 220px;
+  }
+  .word { font-size: clamp(34px, 11vw, 52px); font-weight: 700; letter-spacing: -.02em; word-break: break-word; }
+  .tr { font-size: 26px; font-weight: 600; color: var(--accent); }
+  .ex { color: var(--hint); font-style: italic; }
+  .tap { color: var(--hint); font-size: 14px; }
+  .say { background: none; border: 0; font-size: 26px; cursor: pointer; padding: 4px 10px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  button.a, button.pay {
+    border: 0; border-radius: 14px; padding: 14px 4px; font: inherit; font-weight: 600; cursor: pointer;
+    background: var(--card); color: var(--text);
+  }
+  button.a:active, button.pay:active { transform: scale(.97); }
+  button.a:focus-visible, button.pay:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.pay { background: var(--accent); color: var(--accent-text); width: 100%; padding: 14px; }
+  .promo { background: var(--card); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+  .done { text-align: center; }
+  .done .word { font-size: 40px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header><span id="hi">SmartStudy</span><span id="stat"></span></header>
+<div class="bar"><i id="bar"></i></div>
+<main id="main"></main>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+async function api(path, body) {
+  const r = await fetch("/api/" + path, {
+    method: body ? "POST" : "GET",
+    headers: { "X-Init-Data": tg.initData, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+let S = null, queue = [], total = 0, flipped = false;
+
+async function load() {
+  try { S = await api("state"); }
+  catch { $("main").replaceChildren(el("p", "tap", "Не получилось загрузить данные. Откройте приложение из бота в Telegram.")); return; }
+  queue = [...S.cards]; total = queue.length; flipped = false;
+  render();
+}
+
+function speak(text) {
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = "en-US"; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
+}
+
+function render() {
+  const m = $("main"); m.replaceChildren();
+  $("stat").textContent = `Выучено ${S.learned} из ${S.total}` + (S.premium ? " · Premium" : "");
+  $("bar").style.width = total ? ((total - queue.length) / total * 100) + "%" : "0";
+
+  if (queue.length) {
+    const c = queue[0];
+    const card = el("div", "card"); card.tabIndex = 0;
+    card.append(el("div", "word", c.en));
+    const say = el("button", "say", "🔊"); say.setAttribute("aria-label", "Произнести");
+    say.onclick = e => { e.stopPropagation(); speak(c.en); };
+    card.append(say);
+    if (flipped) { card.append(el("div", "tr", c.ru), el("div", "ex", c.ex)); }
+    else card.append(el("div", "tap", "Нажмите, чтобы увидеть перевод"));
+    card.onclick = () => { if (!flipped) { flipped = true; speak(c.en); render(); } };
+    card.onkeydown = e => { if (e.key === "Enter") card.click(); };
+    m.append(card);
+
+    if (flipped) {
+      const row = el("div", "row");
+      [["Не помню", 1], ["Трудно", 3], ["Хорошо", 4], ["Легко", 5]].forEach(([label, q]) => {
+        const b = el("button", "a", label); b.onclick = () => answer(c, q); row.append(b);
+      });
+      m.append(row);
+    }
+  } else {
+    const d = el("div", "card done");
+    d.append(el("div", "word", S.cards.length ? "Готово 🎉" : "Пока всё"), el("div", "tap", "Новые повторения появятся, когда подойдёт срок. Возвращайтесь позже."));
+    m.append(d);
+  }
+  if (!S.premium && S.locked > 0) {
+    const p = el("div", "promo");
+    p.append(el("div", "", `Ещё ${S.locked} слов закрыто. Premium открывает их на 30 дней.`));
+    const b = el("button", "pay", `Открыть за ${S.price} ⭐`); b.onclick = buy; p.append(b);
+    m.append(p);
+  }
+}
+
+async function answer(c, q) {
+  tg.HapticFeedback && tg.HapticFeedback.impactOccurred("light");
+  queue.shift(); flipped = false;
+  if (q === 1) queue.push(c);
+  render();
+  try { await api("review", { word_id: c.id, quality: q }); } catch {}
+}
+
+async function buy() {
+  try {
+    const { link } = await api("invoice", {});
+    tg.openInvoice(link, status => { if (status === "paid") setTimeout(load, 1500); });
+  } catch { tg.showAlert("Не удалось создать счёт. Попробуйте ещё раз."); }
+}
+
+load();
+</script>
+</body>
+</html>
