@@ -1,5 +1,4 @@
-"""SmartStudy: Telegram Mini App для изучения английского.
-Один процесс: FastAPI (API + страница) и бот aiogram 3 (polling)."""
+"""SmartStudy: Telegram Mini App для изучения английского."""
 import asyncio
 import contextlib
 import hashlib
@@ -27,14 +26,13 @@ try:
 except ImportError:
     pass
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-WEBAPP_URL = os.environ["WEBAPP_URL"]
+BOT_TOKEN = "".join(os.environ["BOT_TOKEN"].split())
+WEBAPP_URL = "".join(os.environ["WEBAPP_URL"].split())
 PRICE_STARS = int(os.getenv("PRICE_STARS", "100"))
 FREE_WORDS = 12
 DB_PATH = os.getenv("DB_PATH", "smartstudy.db")
 DAY = 86400
 
-# (English, Русский, пример)
 WORDS = [
     ("hello", "привет", "Hello, how are you?"),
     ("thank you", "спасибо", "Thank you for your help."),
@@ -100,7 +98,6 @@ def is_premium(uid: int) -> bool:
 
 
 def sm2(ease, interval, reps, q):
-    """Алгоритм SM-2. q: 1 не помню, 3 трудно, 4 хорошо, 5 легко."""
     if q < 3:
         return ease, 0, 0, time.time() + 600
     interval = 1 if reps == 0 else 6 if reps == 1 else round(interval * ease)
